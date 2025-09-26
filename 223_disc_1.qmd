@@ -154,21 +154,32 @@ gdw_sf <- read_sf(here("data", "archive","gdw.gdb")) |>
 ```{r}
 library(tmap)
 
-#if dam ht m is = -99, set it to NA
+#if dam ht m is = -99, set to NA
 gdw_sf <- gdw_sf |> 
   mutate(dam_hgt_m = ifelse(dam_hgt_m == -99, NA, dam_hgt_m))
 
 #give me an interactive map of these dams. BASEMAP SHOULD BE SATELLITE IMAGERY. size the points by their height and color them by their dam_type. when i hover over each point, show me the reservoir name, dam name, country, and height of dam/barrier
 tmap_mode("view")
-tm_shape(gdw_sf) +
+# Rename columns for better legend display
+gdw_sf_display <- gdw_sf
+names(gdw_sf_display)[names(gdw_sf_display) == "dam_type"] <- "Dam Type"
+names(gdw_sf_display)[names(gdw_sf_display) == "dam_hgt_m"] <- "Height (m)"
+
+tmap_mode("view")
+tm_shape(gdw_sf_display) +
   tm_basemap("Esri.WorldImagery") +
-  tm_dots(size = "dam_hgt_m", col = "dam_type", palette = "Set1", 
-          popup.vars = c("Reservoir Name" = "res_name", 
-                         "Dam Name" = "dam_name", 
-                         "Country" = "country", 
-                         "Height of Dam/Barrier (m)" = "dam_hgt_m"),
-          title.size = "Height of Dam/Barrier (m)",
-          title.col = "Dam Type") +
+  tm_dots(
+    size = "Height (m)",
+    col = "Dam Type",
+    palette = "Set1",
+    popup.vars = c(
+      "Reservoir Name" = "res_name", 
+      "Dam Name" = "dam_name", 
+      "Country" = "country",
+      "Dam Type" = "Dam Type",
+      "Height of Dam/Barrier (m)" = "Height (m)"
+    )
+  ) +
   tm_layout(legend.outside = TRUE)
 ```
 
