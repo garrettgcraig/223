@@ -1,0 +1,174 @@
+---
+title: "223_disc_1"
+format: html
+editor: visual
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+# Get Started
+
+```{r}
+packages <- c("here", "janitor", "tidyverse", "sf", "terra", "tmap", "spData", "spDataLarge", "geodata", "kableExtra", "viridisLite")
+installed_packages <- packages %in% rownames(installed.packages())
+
+if (any(installed_packages == FALSE)) {
+  install.packages(packages[!installed_packages])
+}
+library(here)
+library(janitor)
+library(tidyverse)
+library(sf)
+library(kableExtra)
+```
+
+# Load Data
+
+```{r}
+# Load data by reading csv
+gdw_df <- read_csv(here("data","archive", "gdw.csv")) %>%
+  clean_names()
+```
+
+# Data Exploration
+
+```{r}
+#Show the first and last 10 rows of gdw_df and use kable() to make nice HTML tables
+gdw_df %>%
+  slice(c(1:10, (n()-9):n())) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+```
+
+```{r}
+#Print the number of rows and number of columns in gdw_df
+dim(gdw_df)
+```
+
+```{r}
+#Print the column names in gdw_df
+colnames(gdw_df)
+```
+
+# Index, Summarize, Subset Data
+```{r}
+# Use indexing brackets to extract the gdw_df column containing country names as a vector and data frame
+country_df <- gdw_df[, "country"]
+```
+
+```{r}
+# Use group_by() and summarise() to find the number of dams by dam type in gdw_df
+gdw_df |> 
+  group_by(dam_type) |>
+  summarise(count = n()) |>
+  ungroup()
+```
+
+```{r}
+#Make a subset called sub_dam that only contains entries for dam_type == "Dam"
+sub_dam <- gdw_df |> 
+  filter(dam_type == "Dam")
+```
+
+```{r}
+#Re-order gdw_df by ascending order of installation year
+gdw_df <- gdw_df |> 
+  arrange(year_dam)
+```
+
+# Data Visualization
+
+```{r}
+#Make a bar graph of average height of dam/barrier in meters (dam_hgt_m) by country
+gdw_df |> 
+  group_by(country) |> 
+  summarise(avg_height = mean(dam_hgt_m, na.rm = TRUE)) |> 
+  ggplot(aes(x = reorder(country, avg_height), y = avg_height)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Average Height of Dam/Barrier by Country",
+       x = "Country",
+       y = "Average Height (m)") +
+  theme_minimal()
+```
+
+```{r}
+#add continent to the dataframe 
+gdw_df <- gdw_df |> 
+  mutate(continent = case_when(
+    country %in% c("United States", "Canada", "Mexico") ~ "North America",
+    country %in% c("Brazil", "Argentina", "Chile","Paraguay","Suriname","Venezuela") ~ "South America",
+    country %in% c("China", "India", "Japan","Iraq","Kazakhstan") ~ "Asia",
+    country %in% c("Germany", "Finland","France", "UK","Netherlands","Russia","Sweden","Ukraine") ~ "Europe",
+    country %in% c("Ghana", "South Africa", "Mozambique", "Nigeria", "Egypt","Uganda","Zimbabwe") ~ "Africa",
+    TRUE ~ "Other"
+  ))
+```
+
+
+```{r}
+#Make a scatterplot of height of dam/barrier versus representative maximum storage capacity of reservoir in million cubic meters (cap_mcm). color by continent, but not viridis. arrange legend from east to west, so North Am., South Am. Europe, Africa, Asia
+
+gdw_df |> 
+  ggplot(aes(x = dam_hgt_m, y = cap_mcm, color = continent)) +
+  geom_point() +
+  scale_color_manual(values = c("North America" = "blue", "South America" = "green", "Europe" = "red", "Africa" = "orange", "Asia" = "purple", "Other" = "gray")) +
+  labs(title = "Height of Dam/Barrier vs. Storage Capacity",
+       x = "Height of Dam/Barrier (m)",
+       y = "Storage Capacity (million cubic meters)",
+       color = "Continent") +
+  theme_minimal() +
+  theme(legend.position = "right") +
+  guides(color = guide_legend(reverse = TRUE))
+```
+```{r}
+# find which rows have "Other" as continent
+gdw_df |> 
+  filter(continent == "Other")
+
+```
+
+# Looking Ahead
+```{r}
+head(gdw_df$shape, n = 3)
+```
+```{r}
+class(gdw_df$shape)
+```
+
+```{r}
+gdw_st <- st_read(here("data","archive", "gdw.gdb")) |>
+  clean_names() # Convert variable names to lower snake case
+```
+```{r}
+gdw_sf <- read_sf(here("data", "archive","gdw.gdb")) |>
+  clean_names() # Convert variable names to lower snake case
+```
+
+```{r}
+library(tmap)
+
+#if dam ht m is = -99, set it to NA
+gdw_sf <- gdw_sf |> 
+  mutate(dam_hgt_m = ifelse(dam_hgt_m == -99, NA, dam_hgt_m))
+
+#give me an interactive map of these dams. BASEMAP SHOULD BE SATELLITE IMAGERY. size the points by their height and color them by their dam_type. when i hover over each point, show me the reservoir name, dam name, country, and height of dam/barrier
+tmap_mode("view")
+tm_shape(gdw_sf) +
+  tm_basemap("Esri.WorldImagery") +
+  tm_dots(size = "dam_hgt_m", col = "dam_type", palette = "Set1", 
+          popup.vars = c("Reservoir Name" = "res_name", 
+                         "Dam Name" = "dam_name", 
+                         "Country" = "country", 
+                         "Height of Dam/Barrier (m)" = "dam_hgt_m"),
+          title.size = "Height of Dam/Barrier (m)",
+          title.col = "Dam Type") +
+  tm_layout(legend.outside = TRUE)
+```
+
