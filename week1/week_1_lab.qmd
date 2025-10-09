@@ -4,15 +4,188 @@ format: html
 editor: visual
 ---
 
+```{r}
+library(here)
+library(tidyverse)
+library(sf)
+library(stars)
+library(tmap)
+library(viridisLite)
+```
 
 ```{r}
+#load easter island data in here/data/easter-island
+ei_points <- st_read(here("week1","data", "easter-island", "ei_points.gpkg")) |> 
+  filter(type == "volcano")
+ei_elev <- read_stars(here("week1","data", "easter-island", "ei_elev.tif"))
+ei_borders <- st_read(here("week1","data", "easter-island", "ei_border.gpkg"))
+ei_roads <- st_read(here("week1","data", "easter-island", "ei_roads.gpkg"))
+
+# also load ei_bathy.tif for bonus challenge
+ei_bathy <- read_stars(here("week1","data", "easter-island", "ei_bathy.tif"))
+```
+
+
+```{r}
+#Create a map of the outline Rapa Nui using tm_shape() + tm_borders()
+tm_shape(ei_borders) + tm_borders()
+```
+```{r}
+#Expand on your single-object map to create a map of Rapa Nui and…
+
+# …denote the island’s borders and continuous elevation
+# …denote the island’s volcanoes and roads
+# …play with the color palette and essential map elements
+# define the size of the volcano icon by the sv value for that row, change label for that in legend as Volcano SV
+# load a  world map behind rapa nui
+
+# tm_shape(ei_elev) + 
+#   tm_raster(palette = terrain.colors(10), title = "Elevation (m)") +
+#   tm_shape(ei_borders) + 
+#   tm_borders(col = "black", lwd = 2) +
+#   tm_shape(ei_roads) + 
+#   tm_lines(col = "gray30", lwd = 1, alpha = 0.7) +
+#   tm_shape(ei_points) + 
+#   tm_symbols(col = "red", size = 0.5, shape = 21, border.col = "black") +
+#   tm_add_legend(type = "symbol", col = "red", border.col = "black",
+#                 labels = "Volcano", shape = 21) +
+#   tm_layout(title = "Rapa Nui (Easter Island)",
+#             legend.outside = TRUE,
+#             legend.title.size = 1.2,
+#             legend.text.size = 0.8,
+#             frame = FALSE)
+
+tm_shape(ei_elev) + 
+  tm_raster(palette = terrain.colors(10), title = "Elevation (masl)") +
+  tm_shape(ei_borders) + 
+  tm_borders(col = "black", lwd = 2) +
+  tm_shape(ei_roads) + 
+  tm_lines(col = "gray30", lwd = 1, alpha = 0.7) +
+  tm_shape(ei_points) + 
+  tm_symbols(col = "red", size = "sv", shape = 21, border.col = "black") +
+  
+  tm_layout(title = "Rapa Nui (Easter Island)",
+            legend.outside = TRUE,
+            legend.title.size = 1.2,
+            legend.text.size = 0.8,
+            frame = FALSE)
+
+```
+```{r}
+# #now include the bathymetry data as well
+# tm_shape(ei_bathy) + 
+#   tm_raster(palette = rev(viridisLite::viridis(10)), title = "Bathymetry (m)") +
+#   tm_shape(ei_elev) + 
+#   tm_raster(palette = terrain.colors(10), title = "Elevation (m)", alpha = 0.7) +
+#   tm_shape(ei_borders) + 
+#   tm_borders(col = "black", lwd = 2) +
+#   tm_shape(ei_roads) + 
+#   tm_lines(col = "gray30", lwd = 1, alpha = 0.7) +
+#   tm_shape(ei_points) + 
+#   tm_symbols(col = "red", size = "sv", shape = 21, border.col = "black") +
+#   
+#   tm_layout(title = "Rapa Nui (Easter Island)",
+#             legend.outside = TRUE,
+#             legend.title.size = 1.2,
+#             legend.text.size = 0.8,
+#            frame = FALSE)
+
+#set to tmap plot mode
+tmap_mode("view")
+
+#set the bb to the bathy file
+bb <- st_bbox(ei_bathy)
+tm_shape(ei_bathy, bbox = bb) + 
+  tm_raster(palette = rev(viridisLite::viridis(3)), 
+            title = "Bathymetry (mbsl)",
+            legend.reverse = TRUE) +
+  tm_shape(ei_elev, bbox = bb) + 
+  tm_raster(palette = terrain.colors(4), 
+            title = "Elevation (masl)", 
+            alpha = 0.7,
+            legend.reverse = TRUE) +
+  tm_shape(ei_borders, bbox = bb) + 
+  tm_borders(col = "black", lwd = 4) +
+  tm_shape(ei_roads, bbox = bb) + 
+  tm_lines(col = "gray30", lwd = 1, alpha = 0.7) +
+  tm_shape(ei_points, bbox = bb) + 
+  tm_symbols(
+    col = "red",
+    size = "sv",
+    shape = 24,
+    border.col = "black",
+    title.size = "Volcano (sv)",
+    legend.size.show = TRUE,
+    legend.col.show = FALSE,
+    popup.vars = c("Name" = "name", "Elevation (masl)" = "elevation", "Sv" = "sv")
+  ) +
+  tm_compass() +
+  tm_scale_bar() +
+  tm_layout(
+    title = "Rapa Nui (Easter Island)",
+    legend.outside = TRUE,
+    legend.title.size = 1.2,
+    legend.text.size = 0.8,
+    frame = FALSE
+  )
+```
+
+
+```{r}
+#Switch from the default "plot" mode to "view"
+tmap_mode("view")
+```
+
+```{r}
+#As a bonus challenge, reproduce your multiple-object map from earlier using ggplot2! remove the x,y labels. make sure bathymetry is included
+# dont use "scale_fill_terrain_c"
+
+#install.packages("ggnewscale")  # if not already installed
+library(ggnewscale)
+library(ggplot2)
+library(ggnewscale)
+
+ggplot() +
+  # Bathymetry
+  geom_stars(data = ei_bathy, aes(fill = layer)) +
+  scale_fill_viridis_c(option = "D", direction = -1, name = "Bathymetry (mbsl)") +
+  
+  new_scale_fill() +  # new fill scale
+  
+  # Elevation
+  geom_stars(data = ei_elev, aes(fill = layer), alpha = 0.7, inherit.aes = FALSE) +
+  scale_fill_viridis_c(option = "D", direction = 1, name = "Elevation (masl)") +
+  
+  # Borders and roads
+  geom_sf(data = ei_borders, fill = NA, color = "black", size = 1) +
+  geom_sf(data = ei_roads, color = "gray30", size = 0.5, alpha = 0.7) +
+  
+  # Volcano points
+  geom_sf(data = ei_points, aes(size = sv), shape = 24, fill = "red", color = "black") +
+  scale_size_continuous(name = "Volcano SV") +
+  
+  # Titles and theme
+  labs(title = "Rapa Nui (Easter Island)") +
+  guides(
+    fill = guide_colorbar(
+      barwidth = 0.5,   # width of the colorbar
+      barheight = 6     # height of the colorbar
+    ),
+    size = guide_legend(
+      override.aes = list(size = 3), 
+      ncol = 1
+    )
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 8),
+    plot.title = element_text(hjust = 0.5, size = 16),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank()
+  )
 
 ```
 
-You can add options to executable code like this
 
-```{r}
-
-```
-
-The `echo: false` option disables the printing of code (only output is displayed).
