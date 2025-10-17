@@ -1,0 +1,1046 @@
+---
+title: "Week 3 - Spatial Operations"
+author: "Garrett Craig"
+date: "`r Sys.Date()`"
+format:
+  html:
+    toc: true
+    toc-location: left
+    toc-depth: 3
+    number_sections: true
+    code-fold: true
+    code-tools: true
+    code-summary: "Show Code"
+    embed-resources: true
+    theme: darkly
+execute:
+  eval: true
+  message: false
+  warning: false
+editor: 
+  markdown: 
+    wrap: sentence 
+---
+
+::: {.callout-note icon="true"}
+# Source Materials
+
+The following materials are modified from [Chapter 4](https://geocompr.robinlovelace.net/spatial-operations.html) and [Chapter 5](https://geocompr.robinlovelace.net/geometry-operations.html) of *Geocomputation with R* by Robin Lovelace.
+:::
+
+In this lab, we'll explore the basics of spatial and geometry operations on vector data in R using the `sf` package.
+We'll be working with data representing the high points of Aotearoa New Zealand.
+
+::: {.gray-text .center-text}
+[Photo from Unsplash](https://unsplash.com/photos/green-grass-field-near-lake-and-snow-covered-mountain-during-daytime-_0hhHG0aD9Y){target="_blank"}
+:::
+
+# Spatial data operations
+
+Last week, we covered how the basics of the `sf` package.
+We saw that the magic of working with spatial data in the `tidyverse` means that we can leverage many of our favorite `dplyr` functions to manipulate the data attributes.
+So far, we've only worked with the `data.frame` component of `sf` objects.
+In this section, we'll see how we can perform analogous operations using the `geometry` column.
+
+## 1. Set Up
+
+Let's load all necessary packages:
+
+```{r}
+#| warning: false
+#| message: false
+library(sf)
+library(tmap)
+library(tidyverse)
+library(spData)
+library(here)
+```
+
+## 2. Spatial subsetting (filtering)
+
+When working with tabular data, we have frequently found it useful to subset the `data.frame` we are working with based on some condition using `dplyr::filter()`.
+
+For example, last week we saw how we could filter to countries whose average life expectancy is greater than 80 years old using the following code:
+
+```{r}
+#| eval: false
+world %>%
+  filter(lifeExp >= 80)
+```
+
+Similarly, we might want to filter data based on its *spatial* relationships.
+In this case, we use spatial subsetting which is the process of converting a spatial object into a new object containing only the spatial features that *relate* in space to another object.
+This is analogous the attribute subsetting that we covered last week (example above).
+
+### Topological relationships
+
+When filtering based on attributes, we use conditions (for example, `lifeExp >= 80`).
+In spatial subsetting, we use the relationships of objects to each other in space (topological relationships).
+These relationships are based on mathematical relationships, but can be more easily understood from visualizing them.
+
+::: {.gray-text .center-text}
+[*Geocomputation with R*](https://r.geocompx.org/spatial-operations#topological-relations){target="_blank"}
+:::
+
+::: {.callout-tip icon="true"}
+# `st_intersects()` and `st_disjoint()`
+
+Note that `st_intersects()`is a "catch-all" that contains the following relationships:
+
+-   `st_touches()`
+-   `st_overlaps()`
+-   `st_contains()` and s`t_contains_properly()`
+-   `st_covers()` and `st_covered_by()`
+-   `st_within()`
+
+`st_disjoint()` is the ***opposite*** of `st_intersects()`
+:::
+
+### Examples
+
+There are many ways to spatially subset in R, so we will explore a few.
+
+As an example we'll work with the following two datasets from the `spData` package:
+
+-   `nz`: polygons representing the [16 regions of ](https://en.wikipedia.org/wiki/Regions_of_New_Zealand)Aotearoa New Zealand
+-   `nz_height`: top 101 heighest points in Aotearoa New Zealand
+
+We'll explore by trying to find all the high points in the region of Canterbury (shown in dark grey).
+
+```{r}
+nz = spData::nz
+nz_height = spData::nz_height
+```
+
+```{r}
+# FILTER TO CANTERBURY
+canterbury = nz %>%
+  filter(Name == "Canterbury")
+
+westcoast = nz %>%
+  filter(Name == "West Coast")
+```
+
+```{r}
+tm_shape(nz) +
+  tm_polygons() +
+  tm_shape(canterbury) +
+  tm_polygons(fill = "darkgrey") +
+  tm_shape(nz_height) +
+  tm_dots(fill = "red") +
+  tm_layout(main.title = "High Points in Aotearoa New Zealand",
+            legend.outside = TRUE)
+```
+
+#### Bracket subsetting
+
+Like attribute subsetting, the command `x[y, ]` (equivalent to `nz_height[canterbury, ]`) subsets features of a target `x` using the contents of a source object `y`.
+Instead of `y` being a vector of class logical or integer, however, for spatial subsetting both `x` and `y` must be geographic objects.
+Specifically, objects used for spatial subsetting in this way must have the class `sf` or `sfc`: both `nz` and `nz_height` are geographic vector data frames and have the class `s`f, and the result of the operation returns another `sf` object representing the features in the target `nz_height` object that intersect with (in this case high points that are located within) the Canterbury region.
+
+```{r}
+#subset NZ_Heights to just features that intersect canterbury
+c_height1 = nz_height[canterbury, ]
+```
+
+By default bracket subsetting will filter to features in `x` that intersect features in `y`.
+However, we can use other topological relationships by changing options.
+
+```{r}
+c_height_disjoint = nz_height[canterbury, , op = st_disjoint]
+
+#check that intersect is opposite of disjoint
+nrow(c_height1) + nrow(c_height_disjoint) == nrow(nz_height)
+```
+
+#### `st_filter()`
+
+The `sf` package also includes the function `st_filter()` which is analogous to `dplyr::filter()`.
+Using `st_filter()` we can perform spatial subsetting in the same format as using `dplyr` commands.
+The `.predicate =` argument allows us to define which topological relationship we would like to filter by (e.g. `st_intersects()`, `st_disjoint()`).
+
+The results from this method are the identical to the method above.
+
+```{r}
+c_height2 = st_filter(nz_height, canterbury, .predicate = st_intersects)
+```
+
+#### Topological operators (`st_intersects()`)
+
+The previous two methods either by default or explicitly use the argument `st_intersects`.
+All topological relationships have their own topological operators which are functions that evaluate whether or not features meet the specified condition (e.g. `st_intersects()`).
+These operators can be used for spatial subsetting, but are more complicated to use.
+
+The output of `st_intersects()` and other topological operators is a sparse geometry binary predicate list (yikes!) that's a list that defines whether or not each feature in `x` intersects `y`.
+
+This can be converted into logical vector of `TRUE` and `FALSE` values which can then be used for filtering.
+
+```{r}
+nz_height_sgbp = st_intersects(nz_height, canterbury)
+nz_height_sgbp
+
+#convert to logicl vector
+nz_height_logical = lengths(nz_height_sgbp) > 0
+nz_height_logical
+
+#filter based on logical vector
+c_height3 = nz_height[nz_height_logical, ]
+```
+
+Now let's plot results from all three methods to confirm they gave the same results.
+
+```{r}
+map1 = tm_shape(nz) +
+  tm_polygons() +
+  tm_shape(canterbury) +
+  tm_polygons(fill = "darkgrey") +
+  tm_shape(nz_height) +
+  tm_dots(fill = "lightgrey") +
+  tm_shape(c_height1) +
+  tm_dots(fill = "red", size = 0.2) +
+  tm_title(text = "Bracket Subsetting")
+
+map2 = tm_shape(nz) +
+  tm_polygons() +
+  tm_shape(canterbury) +
+  tm_polygons(fill = "darkgrey") +
+  tm_shape(nz_height) +
+  tm_dots(fill = "lightgrey") +
+  tm_shape(c_height2) +
+  tm_dots(fill = "red", size = 0.2) +
+  tm_title(text = "st_filter()")
+
+map3 = tm_shape(nz) +
+  tm_polygons() +
+  tm_shape(canterbury) +
+  tm_polygons(fill = "darkgrey") +
+  tm_shape(nz_height) +
+  tm_dots(fill = "lightgrey") +
+  tm_shape(c_height3) +
+  tm_dots(fill = "red", size = 0.2) +
+  tm_title(text = "st_intersects()")
+
+tmap_arrange(map1, map2, map3, nrow = 1)
+```
+
+### Distance relationships
+
+The topological relationships we have been discussing are all binary (features either intersect or don't).
+In some cases, it might be helpful to subset based on a distance to a feature.
+In these cases we can use the `st_is_within_distance()` to filter features.
+By default `st_is_within_distance()` will return a sparse geometry binary predicate list as in `st_intersects()` above.
+Instead, we can return a logical by setting `sparse = FALSE`.
+
+```{r}
+#find heights within 1000km of canterbury
+nz_height_logical = st_is_within_distance(nz_height, canterbury, dist = units::set_units(1000,"km"), sparse = FALSE)
+
+#filter based on logical vector
+c_height4 = nz_height[nz_height_logical, ]
+```
+
+Now, we should see points appear that do not *intersect* Canterbury, but are within 1000 km.
+
+```{r}
+tm_shape(nz) +
+  tm_polygons() +
+  tm_shape(canterbury) +
+  tm_polygons(fill = "darkgrey") +
+  tm_shape(nz_height) +
+  tm_dots(fill = "lightgrey") +
+  tm_shape(c_height4) +
+  tm_dots(fill = "red", shape=24, size = .5) +
+  tm_title(text = "Points within 1000 km of Canterbury") 
+```
+
+## 3. Spatial joins
+
+Joins are a common way to link different data sources.
+Up until now, we have been performing joins using common attributes between `data.frame`s.
+Last week, we saw that the same joins can be used on `sf` objects.
+However, we can also perform joins by using the spatial relationship of datasets.
+
+::: {.gray-text .center-text}
+[Software Carpentry](https://data-lessons.github.io/gapminder-R/12-joins.html){target="_blank"}
+:::
+
+#### Toplogical relationships
+
+With spatial data, we can join based on the `geometry` columns using topological relationships using the `st_join()` function.
+By default `st_join()` will join based on geometries that intersect, but can accommodate other topological relationships by changing the `join =` argument.
+By default `st_join()` performs left joins, but can perform inner joins by setting `left = FALSE`.
+
+```{r}
+#| eval: false
+joined_df = left_join(df_A, df_B, by = c("id_A" = "id_B"))
+```
+
+Let's consider the scenario where we would like to know which region each of the highest points is located in.
+We can left join the `nz` dataset (polygons of NZ's regions) onto the `nz_height` dataset (points of highest points in the county).
+
+```{r}
+nz_height_left_join = st_join(nz_height,nz) |> 
+  select(id=t50_fid,elevation,region=Name)
+
+head(nz_height_left_join)
+```
+
+Now we could use this data to summarize the number of highest point in each region!
+
+```{r}
+nz_height_left_join %>%
+  group_by(region) %>%
+  summarize(n_points=n()) |> 
+st_drop_geometry()
+```
+
+#### Distance-based joins
+
+Similar to filtering, in some cases we may want to join datasets based on their proximity.
+Let's see an example!
+
+We'll use the following two datasets from the `spData` package:
+
+-   `cycle_hire`: points representing cycle hire points across London with information on number of bikes available
+-   `cycle_hire_osm`: dataset downloaded from OpenStreetMaps representing cycle hire points across London with information on the capacity of the hire point
+
+In this example, we would like join the `capacity` attribute from the `cycle_hire_osm` dataset to the `cycle_hire` dataset.
+Unfortunately it appears that the points from the two datasets do not perfectly align.
+
+```{r}
+#load data
+cycle_hire = spData::cycle_hire
+cycle_hire_osm = spData::cycle_hire_osm
+```
+
+```{r}
+#check whether any points overlap
+if(any(st_intersects(cycle_hire,cycle_hire_osm,sparse=FALSE))==TRUE){print("points overlap!")
+} else {
+    warning("no points overlap")
+  }
+```
+
+```{r}
+tmap_mode("view")
+tm_shape(cycle_hire) +
+  tm_symbols(fill = "red", size = 1, fill_alpha =0.2)+
+  tm_shape(cycle_hire_osm) +
+  tm_symbols(fill = "blue", size = 1, fill_alpha =0.2)
+```
+
+```{r}
+```
+
+```{r}
+#| message: false
+#| code-fold: true
+
+```
+
+We can join by again using `st_join()`, but this time including a distance threshold using `st_is_within_distance`.
+
+```{r}
+cycle_hire_join = st_join(cycle_hire, cycle_hire_osm, 
+                            join = st_is_within_distance, 
+                            dist = units::set_units(20, "m"), 
+                            left = TRUE) |> 
+  select(id,capacity)
+
+cycle_hire_join
+```
+
+```{r}
+tm_shape(cycle_hire_join) +
+  tm_symbols(fill="red",fill_alpha = .2)
+```
+
+Let's build some checks to diagnose the output.
+
+```{r}
+#check that all rows in cycle_hire are retained
+nrow(cycle_hire_join) == nrow(cycle_hire)
+
+```
+
+Note that the joined result has more rows than the target data.
+This is because some of the cycle hire stations in `cycle_hire` have multiple matches in `cycle_hire_osm`.
+Depending on your project, you would need to think about how to resolve this.
+In this case, we can aggregate the values for the overlapping points by taking the mean.
+
+```{r}
+#aggregate values for single points 
+cycle_hire_join = cycle_hire_join |> 
+  group_by(id) |> 
+  summarise(capacity = mean(capacity))
+
+if(nrow(cycle_hire_join) == nrow(cycle_hire)){
+  print("all rows retained")
+} else {
+  warning("rows lost")
+}
+
+tm_shape(cycle_hire_join) +
+  tm_symbols(fill="red",fill_alpha = .2)
+```
+
+### 4. Spatial aggregation
+
+As with aggregating attribute data, spatial data aggregation *condenses* data: outputs have few rows than inputs.
+Think about our friend `group_by() %>% summarise()`!
+Spatial aggregation is the same.
+
+Let's consider the example where we would like to make a map of the mean elevation of high points within each region of NZ.
+There are several ways to do this, but the first thing we should be thinking is that we will need to retain the `geometry` column of the NZ regions in order to make a map.
+
+The first approach is by leveraging `st_join()` again.
+But in this example, we want the `nz` object to be the target to maintain the geometries we need.
+
+```{r}
+tmap_mode("plot")
+nz_elevation <- st_join(x = nz, y = nz_height) %>%
+  group_by(Name) %>%
+  summarise(elevation = mean(elevation, na.rm = TRUE))
+```
+
+The second approach uses the `aggregate()` function.
+Although it doesn't follow the `dplyr` piping convention we're used to, `aggregate()` will come in handy later, so it's nice to see how it works.
+
+The syntax looks slightly different, in this case the argument `x` is the data we would like to aggregate (`nz_height`) and the `by` argument specifies the geometry that you would like to group by.
+The `FUN` argument defines the function that you would like to use to aggregate, in this case `mean`.
+
+```{r}
+nz_elevation_agg <- aggregate(x = nz_height, by = nz, FUN = mean)
+
+```
+
+```{r}
+#| message: false
+
+map1 <- tm_shape(nz_elevation) +
+  tm_polygons(fill = "elevation",
+              fill.legend = tm_legend(title = "Mean elevation (meters)")) +
+  tm_title(text = "group_by()") +
+  tm_layout(meta.margins = c(.2, 0, 0, 0),
+            scale = 1)
+
+map2 <- tm_shape(nz_elevation_agg) +
+  tm_polygons(fill = "elevation",
+              fill.legend = tm_legend(title = "Mean elevation (meters)")) +
+  tm_title(text = "aggregate()") + 
+  tm_layout(meta.margins = c(.2, 0, 0, 0),
+            scale = 1)
+
+tmap_arrange(map1, map2, nrow = 1, sync = FALSE)
+```
+
+::: {.callout-note icon="true"}
+# Joining incongruent layers
+
+An important consideration when aggregating spatial objects is that geometries are *congruent*, meaning aggregating zones align with the units being aggregated.
+This is often the case with administrative boundaries where units are sub-units of one another (e.g. countries \> states \> counties).
+
+However, in some cases the aggregating zones do not share common borders with the target.
+This is an issue because it's not clear how to aggregate underlying data.
+Areal interpolation overcomes this issue by transferring values to another using algorithms, including simple area weighted approaches.
+
+```{r}
+incongruent <- spData::incongruent
+aggregating_zones <- spData::aggregating_zones
+
+tm_shape(incongruent) +
+  tm_polygons(fill = "lightblue",
+              col = "blue") +
+  tm_shape(aggregating_zones) +
+  tm_borders(col = "red")
+```
+
+The simplest useful method for this is area weighted spatial interpolation, which transfers values from the `incongruent` object to a new column in `aggregating_zones` in proportion with the area of overlap: the larger the spatial intersection between input and output features, the larger the corresponding value.
+This is implemented in `st_interpolate_aw()`, as demonstrated in the code chunk below.
+
+```{r}
+# select just the value to be aggregated
+incongruent_2 <- incongruent %>%
+  select(value)
+
+# use area-weighted interpolation to aggregrate the "value" attribute
+aggregating_zones_area_weighted <- st_interpolate_aw(incongruent_2, aggregating_zones, extensive = TRUE)
+
+aggregating_zones_area_weighted$value
+```
+:::
+
+# Geometry operations
+
+In the previous section, we saw how we can use spatial relationship of datasets to perform operations.
+We did so by leveraging the `geometry` columnn, but none of our operations changed the underlying geometries -- mapping our output produces the same objects.
+
+In this section, we will explore operations that change the geometries directly.
+
+## 1. Aggregating
+
+### Geometry unions
+
+We may come across situations where we would like to summarize data across several spatial units.
+For example, summarizing the population across states within regions of the US.
+Based on our experience with tabular data, we can summarize attributes by using `group_by() %>% summarize()`.
+Alternatively we can use the `aggregate()` function.
+So far this should look familiar, but if plot the outputs we notice that these functions have also aggregated the underlying geometries.
+
+```{r}
+#| message: false
+# load US states
+us_states <- spData::us_states
+
+# summarize total population within each region
+regions1 <- us_states %>%
+  group_by(REGION) %>%
+  summarise(population = sum(total_pop_15, na.rm = TRUE))
+
+# alternative approach
+regions2 <- aggregate(x = us_states[, "total_pop_15"], # data and attribute to be aggregated
+                      by = list(us_states$REGION), # attribute to aggregate by
+                      FUN = sum, na.rm = TRUE) # aggregating function 
+```
+
+```{r}
+#| code-fold: true
+#| message: false
+#| warning: false
+map1 <- tm_shape(us_states) +
+  tm_polygons(fill = "total_pop_15",
+              fill.legend  = tm_legend("Total population")) +
+  tm_title(text = "US States")
+ # tm_layout(meta.margins = c(.2, 0, 0, 0))
+
+map2 <- tm_shape(regions1) +
+  tm_polygons(fill = "population",
+              fill.legend  = tm_legend("Total population")) +
+  tm_title(text = "group_by()") 
+ # tm_layout(meta.margins = c(.2, 0, 0, 0))
+
+map3 <- tm_shape(regions2) +
+  tm_polygons(fill = "total_pop_15",
+              fill.legend  = tm_legend("Total population")) +
+  tm_title(text = "aggregate()") 
+  #tm_layout(meta.margins = c(.2, 0, 0, 0))
+
+tmap_arrange(map1, map2, map3, nrow = 1)
+```
+
+What's going on here?
+Behind the scenes, R is using `st_union()` to combine geometries within each group.
+We can also use `st_union()` to combine any pair of spatial objects.
+
+```{r}
+# combine geometries of western states
+us_west <- us_states[us_states$REGION == "West", ]
+us_west_union <- st_union(us_west)
+
+# combine geometries of Texas and western states
+texas <- us_states[us_states$NAME == "Texas", ]
+texas_union <- st_union(us_west_union, texas)
+```
+
+```{r}
+#| message: false
+```
+
+
+```{r}
+#| warning: false
+map1 <- tm_shape(us_west) +
+  tm_polygons() +
+  tm_title(text = "western states")
+
+map2 <- tm_shape(us_west_union) +
+  tm_polygons() +
+  tm_title(text = "western states union")
+
+map3 <- tm_shape(texas) +
+  tm_polygons() +
+  tm_title(text = "TX")
+
+map4 <- tm_shape(texas_union) +
+  tm_polygons() +
+  tm_title(text = "TX + western states union")
+
+tmap_arrange(map1, map2, map3, map4, nrow = 2)
+
+```
+
+## 2. Filtering
+
+### Buffers
+
+In the previous section, we saw that we can filter spatial objects based on their proximity using `st_is_within_distance()`.
+An alternative approach to finding items that are within a set distance would be to expand the `geometry` and then intersect with objects of interest.
+We can change the size of geometries by creating a "buffer" using `st_buffer()`
+
+In this example, let's create 5 km and 50 km buffers around the Seine.
+
+```{r}
+# Load Seine river data
+seine <- spData::seine
+
+seine_buffer_5km <- st_buffer(seine, dist = 5000)
+seine_buffer_50km = st_buffer(seine, dist = 50000)
+
+map1 <- tm_shape(seine_buffer_5km) +
+  tm_polygons() +
+  tm_shape(seine) +
+  tm_lines() +
+  tm_title(text = "5km buffer")
+
+map2 <- tm_shape(seine_buffer_50km) +
+  tm_polygons() +
+  tm_shape(seine) +
+  tm_lines() +
+  tm_title(text = "50km buffer")
+
+tmap_arrange(map1, map2, nrow = 1)
+```
+
+```{r}
+
+```
+
+The Seine is actually comprised of multiple geometries.
+To make things simpler, and more look better on maps, we can combine geometries using our new friend `st_union`!
+
+```{r}
+seine_union <- st_union(seine_buffer_50km)
+
+tm_shape(seine_union) +
+  tm_polygons() +
+  tm_shape(seine) +
+  tm_lines() +
+  tm_title(text= "50km buffer")
+```
+
+Now let's see an example of using a buffer to find objects within a set distance.
+Here, we'll repeat our previous example of finding points within 100 km of Canterbury.
+And check to see if the results match our previous approach!
+
+```{r}
+# create buffer around high points
+nz_height_buffer <- st_buffer(nz_height, dist = 1000000)
+
+# filter buffered points with those that intersect Canterbury
+c_height5 <- nz_height_buffer %>%
+  st_filter(y = canterbury, .predicate = st_intersects)
+
+# check to see if results match previous approach
+if(nrow(c_height4) == nrow(c_height5)){
+  print("results from buffer approach match st_is_within_distance() approach")
+} else{
+  warning("approaches giving different results")
+}
+```
+
+### Clipping
+
+Beyond filtering observations based on their spatial proximity, in some cases we might want to filter (or remove) portions of geometries.
+Spatial clipping is a form of spatial subsetting that involves changes to the `geometry` columns of at least some of the affected features.
+
+Clipping can only apply to features more complex than points: lines, polygons and their ‘multi’ equivalents.
+
+There are several options for clipping geometries:
+
+-   `st_intersection(x, y)` - portion of `x` intersecting `y`
+-   `st_difference(x, y)` - portion of `x` **not** intersecting `y`
+-   `st_difference(y, x)` - portion of `y` **not** intersecting `x`
+-   `st_union(x, y)` - portion either in `x` **or** `y`
+-   `st_sym_difference(x, y)` - portions of `x` and `y` that do not intersect
+
+To illustrate the concept, we will start with a simple example: two overlapping circles with a center point one unit away from each other and a radius of one.
+
+```{r}
+x <- st_sfc(st_point(c(0, 1))) %>%
+  st_buffer(dist = 1) %>%
+  st_sf() 
+
+y <- st_sfc(st_point(c(1, 1))) %>%
+  st_buffer(dist = 1) %>%
+  st_sf()
+
+intersection <- st_intersection(x, y) 
+difference_x_y <- st_difference(x, y) 
+difference_y_x <- st_difference(y, x)
+union <- st_union(x, y)
+sym_difference <- st_sym_difference(x, y) 
+```
+
+```{r}
+
+x <- x %>% st_set_crs(4326)
+y <- y %>% st_set_crs(4326)
+bbox <- st_union(x, y)
+
+map1 <- tm_shape(x, bbox = bbox) +
+  tm_borders(col = "red") +
+  tm_shape(y) +
+  tm_borders(col = "blue")+ 
+  tm_layout(meta.margins = c(.2, 0, 0, 0))
+
+map2 <- map1 +
+  tm_shape(intersection, bbox = bbox) +
+  tm_fill(col = "purple") +
+  tm_title(text = "st_intersection()")+ 
+  tm_layout(meta.margins = c(.2, 0, 0, 0))
+
+map3 <- map1 +
+  tm_shape(difference_x_y, bbox = bbox) +
+  tm_fill(col = "purple") +
+  tm_title(text = "st_difference(x,y)")+ 
+  tm_layout(meta.margins = c(.2, 0, 0, 0))
+
+
+map4 <- map1 +
+  tm_shape(difference_y_x, bbox = bbox) +
+  tm_fill(col = "purple") +
+  tm_title(text = "st_difference(y,x)")+
+  tm_layout(meta.margins = c(.2, 0, 0, 0))
+
+map5 <- map1 +
+  tm_shape(union, bbox = bbox) +
+  tm_fill(col = "purple") +
+  tm_title(text = "st_union()")+ 
+  tm_layout(meta.margins = c(.2, 0, 0, 0))
+
+map6 <- map1 +
+  tm_shape(sym_difference, bbox = bbox) +
+  tm_fill(col = "purple") +
+  tm_title(text = "st_sym_diffference()")+ 
+  tm_layout(meta.margins = c(.2, 0, 0, 0))
+
+tmap_arrange(map1, map2, map3, map4, map5, map6, nrow = 2)
+```
+
+Now let's see how we could use these updated geometries for filtering.
+Extending this simple example, we'll create 100 random points.
+We want to find the points that intersect both `x` and `y`.
+We have a few different approaches that all produce the same results.
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+## 3. Making life easier!
+
+Working with, and especially plotting, complex spatial objects can become quite cumbersome.
+This section we'll see a few ways to create and manipulate geometries to make them easier to work with.
+
+### Centroids
+
+Centroids are basically the center of spatial objects.
+They can be a handy way to display summary statistics (or we might actually use them for analysis -- e.g. to find the distance between polygons).
+
+There are many ways to that we might want to define the "center" of an object, but the most common is the *geographic* centroid which is the center of mass of a spatial object.
+The geographic centroid can be found using `st_centroid()`.
+
+Sometimes the geographic centroid may fall outside of the boundaries of the object (picture the centroid of a doughnut!).
+While correct, it might be confusing on a map, so we can use `st_point_on_surface()` to ensure that the centroid is placed onto the object.
+
+Let's inspect a few examples!
+
+```{r}
+#| message: false
+nz_centroid <- st_centroid(nz)
+seine_centroid <- st_centroid(seine)
+nz_pos <- st_point_on_surface(nz)
+seine_pos <- st_point_on_surface(seine)
+```
+
+```{r}
+map1 <- tm_shape(nz) +
+  tm_polygons() +
+  tm_shape(nz_centroid) +
+  tm_symbols(fill = "red", fill_alpha = 0.5) +
+  tm_shape(nz_pos) +
+  tm_symbols(fill = "blue", fill_alpha = 0.5)+ 
+  tm_layout(meta.margins = c(.2, 0, 0, 0))
+
+map2 <- tm_shape(seine) +
+  tm_lines() +
+  tm_shape(seine_centroid) +
+  tm_symbols(fill = "red", fill_alpha = 0.5) +
+  tm_shape(seine_pos) +
+  tm_symbols(fill = "blue", fill_alpha = 0.5)+ 
+  tm_layout(meta.margins = c(.2, 0, 0, 0))
+
+tmap_arrange(map1, map2, nrow = 1)
+```
+
+### Simplification
+
+We may also want to simplify a `geometry` to make it easier to plot or take up less storage.
+There are several different algorithms for simplifying geometries, check out [*Geocomputation with R*](https://r.geocompx.org/geometry-operations#simplification) for more examples.
+The `sf` packages uses the Douglas-Peucker algorithm within the `st_simplify()` function.
+
+Let's see an example!
+
+```{r}
+seine_simple <- st_simplify(seine, dTolerance = 2000)  # 2000 m
+```
+
+```{r}
+map1 <- tm_shape(seine) +
+  tm_lines() +
+  tm_title("original")
+
+map2 <- tm_shape(seine_simple) +
+  tm_lines() +
+  tm_title("st_simplify()")
+
+tmap_arrange(map1, map2, nrow = 1)
+```
+
+# Summary of new functions
+
+```{r}
+#| echo: false
+#| message: false
+
+attr_layers_df = tibble::tribble(
+  ~Function, ~Description,
+  "st_intersects(x,y)", "tests whether objects intersects",
+  "st_touches(x,y)", "tests whether objects touch", 
+  "st_overlaps(x,y)", "tests whether objects overlap", 
+  "st_contains(x,y)", "tests whether object x contains object y (including boundary)", 
+  "st_contains_properly(x,y)", "tests whether object x contains object y (not including boundary)", 
+  "st_covers(x,y)", "identical to st_contains() when y is a polygon",
+  "st_covered_by(x,y)", "tests whether object y contains object x", 
+  "st_within(x,y)", "tests whether object x is within object y",
+  "st_disjoint(x,y)", "tests whether objects have no intersection",
+  "st_is_within_distance(x,y)", "test whether objects intersect within a certain distance",
+  "st_join(x,y)", "performs spatial join",
+  "st_interpolate_aw(x,y)", "performs area-weighted interpolation of polygons",
+  "aggregate(x,y)", "computes summary statistics for data subsets",
+  "st_union(x,y)", "combines geometries",
+  "st_buffer(x)", "creates polygon that represents all points within a distance threshold of original geometry",
+  "st_intersection(x,y)", "creates polygon of the area shared by x and y",
+  "st_difference(x,y)", "creates polygon of the area of x not in y",
+  "st_sym_difference(x,y)", "creates polygon of the area not shared by x and y",
+  "st_centroid(x)", "creates point(s) of the geographic centroid of a polygon(s)",
+  "st_simplify(x)", "creates a simplified representation of a geometry"
+)
+options(kableExtra.html.bsTable = TRUE)
+knitr::kable(attr_layers_df, 
+             caption = "Brief description of new functions, check out documentation for more information",
+             booktabs = TRUE) %>%
+  kableExtra::kable_styling("striped",
+                            latex_options = "striped", 
+                            full_width = FALSE) %>% 
+  kableExtra::column_spec(1, bold = TRUE, monospace = TRUE) %>%
+  kableExtra::pack_rows("Spatial data operations", 1, 12) %>%
+  kableExtra::pack_rows("Geometry operations", 13, 20)
+```
+
+# Exercise
+
+## 1. Get Started
+```{r}
+sb_protected_areas <- st_read(here("week3","data", "cpad_super_units_sb.shp")) |>  
+  st_transform("ESRI:102009")
+
+sb_city_boundaries <- st_read(here("week3","data", "sb_city_boundaries_2003.shp")) |> 
+  st_transform("ESRI:102009")
+
+sb_county_boundary <- st_read(here("week3","data", "sb_county_boundary_2020.shp")) |> 
+  st_transform("ESRI:102009")
+
+aves <- st_read(here("week3","data","aves_observations_2020_2024.shp")) |> 
+  st_transform("ESRI:102009")
+```
+## 2. Find bird observations within PAs in Santa Barbara County
+
+```{r}
+#| fig-cap: "Bird observations within protected areas in Santa Barbara County using spatial subsetting. Orange areas represent protected areas, and dark blue points show bird observations."
+#| fig-width: 10
+#| fig-height: 8
+
+#Find how many bird observations are within protected areas in Santa Barbara County and show how your output differs with a spatial subset versus a spatial join
+aves_PA_subset <- sb_protected_areas[aves, ] # Subset
+
+nrow(aves_PA_subset) # Check number of rows
+
+tm_shape(sb_county_boundary) +
+  tm_fill(col = "lightgray") +
+  tm_borders(col = "gray30", lwd = 1.5) +
+  tm_shape(sb_protected_areas) +
+    tm_borders(lwd = 2, col = "#fb8500") +
+    tm_fill(col = "#fb8500", alpha = 0.3) +
+  tm_shape(aves_PA_subset) +
+    tm_dots(col = "#023047", size = 0.1, alpha = 0.7) +
+  tm_title(text = "Bird Observations in Protected Areas (Subset)") +
+  tm_compass(type = "arrow", position = c("left", "top")) +
+  tm_scalebar(position = c("left", "bottom")) +
+  tm_layout(
+    main.title.size = 1.2,
+    main.title.fontface = "bold",
+    frame = FALSE
+  )
+```
+```{r}
+#| fig-cap: "Bird observations within protected areas in Santa Barbara County using spatial join. This method retains all bird observation attributes along with the protected area information. Orange areas represent protected areas, and dark blue points show bird observations."
+#| fig-width: 10
+#| fig-height: 8
+
+aves_PA_join <- st_join(aves, sb_protected_areas) # default: `st_intersects`
+
+nrow(aves_PA_join) # Check number of rows
+
+tm_shape(sb_county_boundary) +
+  tm_fill(col = "lightgray") +
+  tm_borders(col = "gray30", lwd = 1.5) +
+  tm_shape(sb_protected_areas) +
+    tm_borders(lwd = 2, col = "#fb8500") +
+    tm_fill(col = "#fb8500", alpha = 0.3) +
+  tm_shape(aves_PA_join) +
+    tm_dots(col = "#023047", size = 0.1, alpha = 0.7) +
+  tm_title(text = "Bird Observations in Protected Areas (Spatial Join)") +
+  tm_compass(type = "arrow", position = c("left", "top")) +
+  tm_scalebar(position = c("left", "bottom")) +
+  tm_layout(
+    main.title.size = 1.2,
+    main.title.fontface = "bold",
+    frame = FALSE
+  )
+```
+```{r}
+#| fig-cap: "Bird observations within 5 km of protected areas in Santa Barbara County. The orange areas show the original protected area boundaries, while the lighter orange represents the 5 km buffer zone. Dark blue points show all bird observations within this expanded area."
+#| fig-width: 10
+#| fig-height: 8
+
+st_crs(sb_protected_areas)$units # Check if units are in meters
+
+PA_buffer_5km <- st_buffer(sb_protected_areas, dist = 5000) # Create 5000 m buffer around PAs
+aves_buffer_subset <- PA_buffer_5km[aves, ] # Subset
+
+nrow(aves_buffer_subset) # Check number of rows
+
+tm_shape(sb_county_boundary) +
+  tm_fill(col = "lightgray") +
+  tm_borders(col = "gray30", lwd = 1.5) +
+  tm_shape(PA_buffer_5km) +
+    tm_borders(lwd = 1, col = "#fb8500", lty = "dashed") +
+    tm_fill(col = "#fb8500", alpha = 0.15) +
+  tm_shape(sb_protected_areas) +
+    tm_borders(lwd = 2, col = "#fb8500") +
+    tm_fill(col = "#fb8500", alpha = 0.3) +
+  tm_shape(aves_buffer_subset) +
+    tm_dots(col = "#023047", size = 0.1, alpha = 0.7) +
+  tm_title(text = "Bird Observations within 5km of Protected Areas") +
+  tm_compass(type = "arrow", position = c("left", "top")) +
+  tm_scalebar(position = c("left", "bottom")) +
+  tm_layout(
+    main.title.size = 1.2,
+    main.title.fontface = "bold",
+    frame = FALSE
+  )
+```
+## 3. Find PAs within 15km of Goleta
+
+```{r}
+#| fig-cap: "Protected areas within 15 km of Goleta city boundary. The green area represents the city of Goleta, the light blue circle shows the 15 km buffer zone, and orange areas indicate protected areas that intersect with this buffer."
+#| fig-width: 10
+#| fig-height: 8
+
+# Subset SB county to Goleta
+goleta <- sb_city_boundaries |>
+  dplyr::filter(NAME == "Goleta")
+
+st_crs(goleta)$units  # Check if units are in meters
+
+goleta_buffer_15km <- st_buffer(goleta, dist = 15000) # Create 15 km buffer around Goleta
+
+# Find PAs within/intersecting the buffer
+goleta_PAs_within <- st_within(sb_protected_areas, goleta_buffer_15km)
+goleta_PAs_intersect <- st_intersects(sb_protected_areas, goleta_buffer_15km)
+goleta_PAs_intersection <- st_intersection(sb_protected_areas, goleta_buffer_15km)
+
+# Also create a join for reference
+goleta_PAs_join <- st_join(sb_protected_areas, goleta, st_is_within_distance, dist = 15000)
+
+# Create visualization
+tm_shape(sb_county_boundary) +
+  tm_fill(col = "lightgray") +
+  tm_borders(col = "gray30", lwd = 1.5) +
+  tm_shape(goleta_buffer_15km) +
+    tm_borders(lwd = 2, col = "#219ebc", lty = "dashed") +
+    tm_fill(col = "#219ebc", alpha = 0.15) +
+  tm_shape(goleta_PAs_intersection) +
+    tm_borders(lwd = 2, col = "#fb8500") +
+    tm_fill(col = "#fb8500", alpha = 0.4) +
+  tm_shape(goleta) +
+    tm_borders(lwd = 2, col = "#2a9d8f") +
+    tm_fill(col = "#2a9d8f", alpha = 0.5) +
+  tm_title(text = "Protected Areas within 15km of Goleta") +
+  tm_compass(type = "arrow", position = c("left", "top")) +
+  tm_scalebar(position = c("left", "bottom")) +
+  tm_layout(
+    main.title.size = 1.2,
+    main.title.fontface = "bold",
+    frame = FALSE
+  )
+```
+
+## 4. Find distance between Goleta and Dangermond Preserve
+
+```{r}
+#| fig-cap: "Distance between Goleta and Jack and Laura Dangermond Preserve. The green area represents Goleta, the orange area shows the Dangermond Preserve, and points indicate the centroids of each polygon. The red line shows the distance between centroids."
+#| fig-width: 10
+#| fig-height: 8
+
+# Subset PA to Dangermond Preserve
+dangermond <- sb_protected_areas |>
+  dplyr::filter(UNIT_NAME == "Jack and Laura Dangermond Preserve")
+
+danger_dist <- st_distance(goleta, dangermond) # Compute the distance between geometries edges
+
+# Calculate the geometric center
+dangermond_centroid <- st_centroid(dangermond)
+goleta_centroid <- st_centroid(goleta)
+
+danger_dist_centroid <- st_distance(goleta_centroid, dangermond_centroid) # Compute the distance between geometries edges
+
+# Check if the distance matrices are equal
+danger_dist == danger_dist_centroid
+
+# Create a line connecting the centroids for visualization
+connection_line <- st_sfc(st_linestring(rbind(
+  st_coordinates(goleta_centroid),
+  st_coordinates(dangermond_centroid)
+)), crs = st_crs(goleta))
+
+# Create visualization
+tm_shape(sb_county_boundary) +
+  tm_fill(col = "lightgray") +
+  tm_borders(col = "gray30", lwd = 1.5) +
+  tm_shape(dangermond) +
+    tm_borders(lwd = 2, col = "#fb8500") +
+    tm_fill(col = "#fb8500", alpha = 0.4) +
+  tm_shape(goleta) +
+    tm_borders(lwd = 2, col = "#2a9d8f") +
+    tm_fill(col = "#2a9d8f", alpha = 0.5) +
+  tm_shape(connection_line) +
+    tm_lines(col = "#e63946", lwd = 3, lty = "solid") +
+  tm_shape(goleta_centroid) +
+    tm_symbols(col = "#2a9d8f", size = 0.5, shape = 21, border.col = "black", border.lwd = 2) +
+  tm_shape(dangermond_centroid) +
+    tm_symbols(col = "#fb8500", size = 0.5, shape = 21, border.col = "black", border.lwd = 2) +
+  tm_title(text = paste0("Distance: ", round(as.numeric(danger_dist_centroid)/1000, 1), " km")) +
+  tm_compass(type = "arrow", position = c("left", "top")) +
+  tm_scalebar(position = c("left", "bottom")) +
+  tm_layout(
+    main.title.size = 1.2,
+    main.title.fontface = "bold",
+    frame = FALSE
+  )
+```
+

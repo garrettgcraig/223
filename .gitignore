@@ -3,5 +3,14 @@
 .RData
 .Ruserdata
 
+week0/data
 week1/data
+week2/data
+week3/data
 .DS_Store
+
+# Quarto cache and output files
+*_cache/
+*_files/
+*.html
+*.pdf
