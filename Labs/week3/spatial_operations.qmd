@@ -420,16 +420,12 @@ nz_elevation_agg <- aggregate(x = nz_height, by = nz, FUN = mean)
 map1 <- tm_shape(nz_elevation) +
   tm_polygons(fill = "elevation",
               fill.legend = tm_legend(title = "Mean elevation (meters)")) +
-  tm_title(text = "group_by()") +
-  tm_layout(meta.margins = c(.2, 0, 0, 0),
-            scale = 1)
+  tm_title(text = "group_by()") 
 
 map2 <- tm_shape(nz_elevation_agg) +
   tm_polygons(fill = "elevation",
               fill.legend = tm_legend(title = "Mean elevation (meters)")) +
-  tm_title(text = "aggregate()") + 
-  tm_layout(meta.margins = c(.2, 0, 0, 0),
-            scale = 1)
+  tm_title(text = "aggregate()") 
 
 tmap_arrange(map1, map2, nrow = 1, sync = FALSE)
 ```
@@ -841,7 +837,7 @@ knitr::kable(attr_layers_df,
   kableExtra::pack_rows("Geometry operations", 13, 20)
 ```
 
-# Exercise
+# Discussion (Friday)
 
 ## 1. Get Started
 ```{r}
