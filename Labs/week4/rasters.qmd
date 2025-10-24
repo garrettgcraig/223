@@ -378,13 +378,27 @@ The image below provides an example of using a moving window filter. The large o
 We can use the `focal()` function to perform spatial filtering. We define the size, shape, and weights of the moving window using a matrix. In the following example we'll find the minimum value in 9x9 cell neighborhoods.
 
 ```{r}
-
+elevation_focal <- focal(zion_elevation, 
+                         w = matrix(1, nrow = 9, ncol = 9), # create moving window
+                         fun = min) # function to map new values
 
 ```
 
 ```{r}
 
+map1 <- tm_shape(zion_elevation) +
+  tm_raster(col.legend = tm_legend(title = "Elevation (m)"))+
+  tm_title(text = "original")
+  #tm_layout(meta.margins = c(.2, 0, 0, 0))
 
+
+map2 <- tm_shape(elevation_focal) +
+  tm_raster(col.legend = tm_legend(title = "Elevation (m)"))+
+  tm_title(text = "aggregated")
+ # tm_layout(meta.margins = c(.2, 0, 0, 0))
+
+
+tmap_arrange(map1, map2, nrow = 1) 
 ```
 
 ::: {.callout-tip icon="true" collapse="true"}
@@ -403,7 +417,9 @@ Similar to focal operations, zonal operations apply an aggregation function to m
 For example, we could find the average elevation within the elevations zones we created.
 
 ```{r}
-
+zonal(zion_elevation, reclassified, fun = "mean") %>%
+  kable(col.names = c("Elevation zone", "Mean elevation (m)")) %>% 
+  kable_styling(bootstrap_options = "striped")
 
 ```
 
@@ -418,19 +434,19 @@ When merging or performing map algebra, rasters need to match in their resolutio
 In the simplest case, two images differ only in their extent. Let's start by increasing the extent of a elevation raster.
 
 ```{r}
-
+elev_2 <- extend(zion_elevation, c(1, 200)) # add one row and two columns
 ```
 
 Performing algebraic operations on objects with different extents doesn't work.
 
 ```{r}
-
+elev + elev_2
 ```
 
 We can align the extent of the 2 rasters using the `extend()` function. Here we extend the `zion_elevation` object to the extent of elev_2 by adding NAs.
 
 ```{r}
-
+elev_3 <- extend(zion_elevation, elev_2)
 ```
 
 ### Origin
@@ -438,6 +454,7 @@ We can align the extent of the 2 rasters using the `extend()` function. Here we 
 The origin function returns the coordinates of the cell corner closes to the coordinates (0,0).
 
 ```{r}
+origin(zion_elevation)
 
 
 ```

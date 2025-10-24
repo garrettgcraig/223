@@ -1,0 +1,113 @@
+---
+title: "Principal Component Analysis of Environmental Variables"
+author: "Garrett Craig"
+date: "`r Sys.Date()`"
+format:
+  html:
+    toc: true
+    toc-location: left
+    toc-depth: 3
+    number_sections: true
+    code-fold: true
+    code-tools: true
+    code-summary: "Show Code"
+    embed-resources: true
+    theme: darkly
+execute:
+  eval: true
+  message: false
+  warning: false
+editor: 
+  markdown: 
+    wrap: sentence 
+---
+
+# Load Packages
+
+```{r}
+library(tidyverse)
+library(spData)
+library(spDataLarge)
+library(sf)
+library(stars)
+library(terra)
+```
+
+# Load Data
+
+```{r}
+dem <- terra::rast(system.file("raster/dem.tif", package = "spDataLarge"))
+landsat <- terra::rast(system.file("raster/landsat.tif", package = "spDataLarge"))
+srtm <- terra::rast(system.file("raster/srtm.tif", package = "spDataLarge"))
+```
+
+# 2. Explore elevation at Mt. Mongón, Perú
+
+## Make a boxplot and histogram of elevation at Mt. Mongón, Perú
+
+```{r}
+hist(dem,
+     main = "Digital Elevation Model Distribution",
+     xlab = "Value")
+```
+
+```{r}
+boxplot(dem,
+        main = "Digital Elevation Model Distribution",
+        ylab = "Value")
+```
+
+```{r}
+# Reclassify dem and compute the mean for the three classes:
+# Low, where elevation is less than 300
+# Medium
+# High, where elevation is greater than 500
+
+dem_reclass <- terra::classify(dem,
+                                rcl = matrix(c(-Inf, 300, 1,
+                                               300, 500, 2,
+                                               500, Inf, 3),
+                                             ncol = 3,
+                                             byrow = TRUE))
+```
+
+```{r}
+# Define a reclassification matrix
+rcl <- matrix(c(-Inf, 300, 0, # values -Inf to 300 = 0
+                300, 500, 1,  # values 300 to 500 = 1
+                500, Inf, 2), # values 500 to Inf = 2
+              ncol = 3, byrow = TRUE)
+
+# Apply the matrix to reclassify the raster, making all cells 0 or 1 or 2
+dem_rcl <- terra::classify(dem, rcl = rcl)
+
+# Assign labels to the numerical categories
+levels(dem_rcl) <- tibble::tibble(id = 0:2, 
+                                  cats = c("low", "medium", "high"))
+
+# Calculate mean elevation for each category using original DEM values
+elevation_mean <- terra::zonal(dem, dem_rcl, fun = "mean")
+elevation_mean
+```
+
+# 3. Explore NDVI and NDWI at Zion National Park
+
+```         
+  Landsat 8 bands 2-5 correspond to bands 1-4 for this raster. Bands are as follows:
+  
+  Band      Color
+  1 blue    30 meter
+  2 green   30 meter
+  3 red 30 meter
+  4 near-infrared   30 meter
+```
+```{r}
+# Apply a scale factor and offset for all grid cells
+# Landsat Level-2 products are written as scaled integers to allow us to convert the data from floating point to integer for delivery. In most cases these are written to a 16-bit integer, which saves disk space and provides faster download times. Each floating point pixel has an offset applied and then multiplied by a gain to bring the value into the 16-bit integer (or unsigned integer) range. These values are referred to as scaled integers. To allow the user to get the data back to its original floating point value, a scale factor and offset are provided for each band.
+# 
+# Science product	Scale factor	Offset
+# Surface reflectance	0.0000275	-0.2
+
+landsat_sf <- landsat * 0.0000275 - 0.2
+```
+
